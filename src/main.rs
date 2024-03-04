@@ -24,8 +24,10 @@ struct Args {
 
 fn get_s3_bucket(args: &Args) -> Bucket {
 	let region = args.region.parse().unwrap();
-	let access_key = env::var("AWS_ACCESS_KEY_ID").unwrap();
-	let secret_key = env::var("AWS_SECRET_ACCESS_KEY").unwrap();
+	let access_key =
+		env::var("AWS_ACCESS_KEY_ID").expect("env variable `AWS_ACCESS_KEY_ID` not set");
+	let secret_key =
+		env::var("AWS_SECRET_ACCESS_KEY").expect("env variable `AWS_SECRET_ACCESS_KEY` not set");
 
 	let credentials =
 		Credentials::new(Some(&access_key), Some(&secret_key), None, None, None).unwrap();
@@ -33,8 +35,7 @@ fn get_s3_bucket(args: &Args) -> Bucket {
 	Bucket::new(&args.bucket, region, credentials).unwrap()
 }
 
-fn upload(args: &Args, files: &[fs::DirEntry]) {
-	let bucket = get_s3_bucket(args);
+fn upload(bucket: &Bucket, files: &[fs::DirEntry]) {
 	let results = bucket.list("".to_string(), Some("".to_string())).unwrap();
 
 	let mut file_list = Vec::new();
@@ -57,7 +58,6 @@ fn upload(args: &Args, files: &[fs::DirEntry]) {
 			.unwrap();
 
 		let buffer = fs::read(&upath).unwrap();
-
 		let filename = format!("{}/{}", foldername, filename);
 
 		let search_result = file_list.iter().find(|(key, _)| key == &filename);
@@ -99,12 +99,20 @@ fn read_dir_recursive(dir: &path::Path) -> Vec<fs::DirEntry> {
 
 	files
 }
-fn main() {
+fn main() -> Result<(), std::io::Error> {
 	let args = Args::parse();
+	let bucket = get_s3_bucket(&args);
 
 	let mut paths = read_dir_recursive(&path::Path::new(&args.path));
-	paths.sort_by_key(|dir| cmp::Reverse(dir.path()));
+
+	if paths.is_empty() {
+		Err(std::io::ErrorKind::NotFound)?;
+	}
+
+	paths.sort_by_key(|dir| cmp::Reverse(dir.metadata().unwrap().modified().unwrap()));
 
 	let max_idx = cmp::min(args.max_amount, paths.len());
-	upload(&args, &paths[..max_idx]);
+	upload(&bucket, &paths[..max_idx]);
+
+	Ok(())
 }
