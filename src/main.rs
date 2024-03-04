@@ -109,10 +109,10 @@ fn main() -> Result<(), std::io::Error> {
 		Err(std::io::ErrorKind::NotFound)?;
 	}
 
-	paths.sort_by_key(|dir| cmp::Reverse(dir.metadata().unwrap().modified().unwrap()));
+	paths.sort_by_key(|dir| dir.metadata().unwrap().modified().unwrap());
 
 	let max_idx = cmp::min(args.max_amount, paths.len());
-	upload(&bucket, &paths[..max_idx]);
+	upload(&bucket, &paths[paths.len() - max_idx - 1..paths.len() - 1]);
 
 	Ok(())
 }
