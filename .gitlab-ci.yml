@@ -16,6 +16,7 @@ stages:
         # - bemos_s3uploader
         - bemos_s3uploader_arm
         # - bemos_s3uploader_x86_64.exe
+        - LICENSE
 
 ## Build ##############################################################################################################
 # build:
