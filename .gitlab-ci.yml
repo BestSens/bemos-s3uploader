@@ -1,0 +1,89 @@
+image: docker.bestsens.local/bone/rust-build-image:master
+
+variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+    CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+
+stages:
+    - build
+    - deploy
+    - release
+
+.artifacts: &artifacts
+    expire_in: 4 weeks
+    name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}"
+    paths:
+        # - bemos_s3uploader
+        - bemos_s3uploader_arm
+        # - bemos_s3uploader_x86_64.exe
+
+## Build ##############################################################################################################
+# build:
+#     stage: build
+#     cache:
+#         paths:
+#             - .cargo
+#             - target
+#     artifacts:
+#         <<: *artifacts
+#     script:
+#         - cargo build --release
+#         - cargo build --release --target=x86_64-pc-windows-gnu
+#         - cp target/release/bemos_s3uploader ./bemos_s3uploader
+#         - cp target/x86_64-pc-windows-gnu/release/bemos_s3uploader.exe ./bemos_s3uploader_x86_64.exe
+
+build_arm:
+    image: docker.bestsens.local/bone/musl-build-image
+    stage: build
+    cache:
+        paths:
+            - .cargo
+            - target
+    artifacts:
+        <<: *artifacts
+    script:
+        - CC=arm-bemos-linux-musleabihf-gcc cargo build --release --target=armv7-unknown-linux-musleabihf
+        - cp target/armv7-unknown-linux-musleabihf/release/bemos_s3uploader ./bemos_s3uploader_arm
+
+## Create persistent archives #########################################################################################
+deploy:
+    stage: deploy
+    when: on_success
+    only:
+        - tags
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - echo GE_JOB_ID=$CI_JOB_ID >> generate_executables.env
+    artifacts:
+        <<: *artifacts
+        expire_in:
+        reports:
+            dotenv: generate_executables.env
+    dependencies:
+        - build_arm
+
+## Release ############################################################################################################
+release_job:
+    stage: release
+    image: registry.gitlab.com/gitlab-org/release-cli:latest
+    needs:
+        - job: deploy
+          artifacts: true
+    only:
+        - tags
+    script:
+        - echo 'releasing $_CI_COMMIT_TAG'
+    release:
+        name: '$CI_COMMIT_TAG'
+        description: 'Automatically created'
+        tag_name: '$CI_COMMIT_TAG'
+        ref: '$CI_COMMIT_TAG'
+        assets:
+            links:
+                # - name: "Linux x86_64"
+                #   url: "https://gitlab.bestsens.local/bone/bemos-s3uploader/-/jobs/${GE_JOB_ID}/artifacts/raw/bemos_s3uploader"
+                - name: "Linux ARM"
+                  url: "https://gitlab.bestsens.local/bone/bemos-s3uploader/-/jobs/${GE_JOB_ID}/artifacts/raw/bemos_s3uploader_arm"
+                # - name: "Windows x86_64"
+                #   url: "https://gitlab.bestsens.local/bone/bemos-s3uploader/-/jobs/${GE_JOB_ID}/artifacts/raw/bemos_s3uploader_x86_64.exe"
