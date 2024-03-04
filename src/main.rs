@@ -74,7 +74,7 @@ fn upload(bucket: &Bucket, files: &[fs::DirEntry]) {
 			println!("File already exists but file size is smaller: {}", filename);
 		}
 
-		bucket.put_object(&filename, &buffer).unwrap();
+		// bucket.put_object(&filename, &buffer).unwrap();
 		println!(
 			"Successfully uploaded file: {} ({} bytes)",
 			filename,
@@ -111,8 +111,8 @@ fn main() -> Result<(), std::io::Error> {
 
 	paths.sort_by_key(|dir| dir.metadata().unwrap().modified().unwrap());
 
-	let max_idx = cmp::min(args.max_amount, paths.len());
-	upload(&bucket, &paths[paths.len() - max_idx - 1..paths.len() - 1]);
+	let max_idx = cmp::min(args.max_amount + 1, paths.len());
+	upload(&bucket, &paths[paths.len() - max_idx..paths.len() - 1]);
 
 	Ok(())
 }
