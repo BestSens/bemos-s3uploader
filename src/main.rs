@@ -4,6 +4,7 @@ use s3::creds::Credentials;
 use std::cmp;
 use std::env;
 use std::fs;
+use std::path;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -34,9 +35,7 @@ fn get_s3_bucket(args: &Args) -> Bucket {
 
 fn upload(args: &Args, files: &[fs::DirEntry]) {
     let bucket = get_s3_bucket(args);
-    let results = bucket
-        .list("log".to_string(), Some("/".to_string()))
-        .unwrap();
+    let results = bucket.list("".to_string(), Some("".to_string())).unwrap();
 
     let mut file_list = Vec::new();
 
@@ -46,14 +45,26 @@ fn upload(args: &Args, files: &[fs::DirEntry]) {
         }
     }
 
+    println!("{:?}", file_list);
+
     for path in files {
         let upath = path.path();
-        let buffer = fs::read(&upath).unwrap();
         let filename = upath.file_name().unwrap().to_str().unwrap();
+        let foldername = upath
+            .parent()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
 
-        let search_result = file_list.iter().find(|(key, _)| key == filename);
+        let buffer = fs::read(&upath).unwrap();
 
-        if Some(search_result) != None {
+        let filename = format!("{}/{}", foldername, filename);
+
+        let search_result = file_list.iter().find(|(key, _)| key == &filename);
+
+        if search_result.is_some() {
             let filename = &search_result.unwrap().0;
             let size: usize = search_result.unwrap().1.try_into().unwrap();
 
@@ -65,7 +76,7 @@ fn upload(args: &Args, files: &[fs::DirEntry]) {
             println!("File already exists but file size is smaller: {}", filename);
         }
 
-        bucket.put_object(filename, &buffer).unwrap();
+        bucket.put_object(&filename, &buffer).unwrap();
         println!(
             "Successfully uploaded file: {} ({} bytes)",
             filename,
@@ -73,14 +84,27 @@ fn upload(args: &Args, files: &[fs::DirEntry]) {
         );
     }
 }
+
+fn read_dir_recursive(dir: &path::Path) -> Vec<fs::DirEntry> {
+    let mut files = Vec::new();
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                files.append(&mut read_dir_recursive(&path));
+            } else {
+                files.push(entry);
+            }
+        }
+    }
+
+    files
+}
 fn main() {
     let args = Args::parse();
 
-    let mut paths: Vec<_> = fs::read_dir(&args.path)
-        .unwrap()
-        .map(|r| r.unwrap())
-        .collect();
-
+    let mut paths = read_dir_recursive(&path::Path::new(&args.path));
     paths.sort_by_key(|dir| cmp::Reverse(dir.path()));
 
     let max_idx = cmp::min(args.max_amount, paths.len());
