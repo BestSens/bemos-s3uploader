@@ -45,8 +45,6 @@ fn upload(args: &Args, files: &[fs::DirEntry]) {
 		}
 	}
 
-	println!("{:?}", file_list);
-
 	for path in files {
 		let upath = path.path();
 		let filename = upath.file_name().unwrap().to_str().unwrap();
