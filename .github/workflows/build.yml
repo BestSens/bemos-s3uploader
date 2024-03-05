@@ -84,7 +84,7 @@ jobs:
       - name: Setup
         run: |
           apt-get update
-          apt-get install mingw-w64
+          apt-get install -y mingw-w64
           rustup target add x86_64-pc-windows-gnu          
       - name: Build
         run: |
