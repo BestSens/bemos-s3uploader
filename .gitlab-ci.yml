@@ -1,0 +1,148 @@
+image: docker.bestsens.local/bone/rust-build-image:master
+
+variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+    CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+
+stages:
+    - build
+    - deploy
+    - release
+
+cache:
+    - key: "global_cache"
+      paths:
+        - .cargo
+        - target
+
+## Build ##############################################################################################################
+build:x86_64:
+    stage: build
+    cache:
+        paths:
+            - .cargo
+            - target
+    artifacts:
+        expire_in: 4 weeks
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_x86_64"
+        paths:
+            - bemos_s3uploader
+            - LICENSE
+    script:
+        - cargo build --release
+        - cp target/release/bemos_s3uploader ./bemos_s3uploader
+
+build:x86_64-pc-windows-gnu:
+    stage: build
+    cache:
+        paths:
+            - .cargo
+            - target
+    artifacts:
+        expire_in: 4 weeks
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_x86_64-pc-windows-gnu"
+        paths:
+            - bemos_s3uploader.exe
+            - LICENSE
+    script:
+        - cargo build --release --target=x86_64-pc-windows-gnu
+        - cp target/x86_64-pc-windows-gnu/release/bemos_s3uploader.exe ./bemos_s3uploader.exe
+
+build:armv7:
+    image: docker.bestsens.local/bone/musl-build-image
+    stage: build
+    cache:
+        paths:
+            - .cargo
+            - target
+    artifacts:
+        expire_in: 4 weeks
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHA}_armv7"
+        paths:
+            - bemos_s3uploader
+            - LICENSE
+    script:
+        - CC=arm-bemos-linux-musleabihf-gcc cargo build --release --target=armv7-unknown-linux-musleabihf
+        - cp target/armv7-unknown-linux-musleabihf/release/bemos_s3uploader ./bemos_s3uploader
+
+## Create persistent archives #########################################################################################
+.deploy: &deploy
+    stage: deploy
+    when: on_success
+    only:
+        - tags
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - echo '1'
+
+deploy:x86_64:
+    <<: *deploy
+    script:
+        - echo GE_JOB_ID_x86_64=$CI_JOB_ID >> generate_executables.env
+    artifacts:
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_x86_64"
+        paths:
+            - bemos_s3uploader
+            - LICENSE
+        reports:
+            dotenv: generate_executables.env
+    dependencies:
+        - build:x86_64
+
+deploy:x86_64-pc-windows-gnu:
+    <<: *deploy
+    script:
+        - echo GE_JOB_ID_x86_64_pc_windows_gnu=$CI_JOB_ID >> generate_executables.env
+    artifacts:
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_x86_64-pc-windows-gnu"
+        paths:
+            - bemos_s3uploader.exe
+            - LICENSE
+        reports:
+            dotenv: generate_executables.env
+    dependencies:
+        - build:x86_64-pc-windows-gnu
+
+deploy:armv7:
+    <<: *deploy
+    script:
+        - echo GE_JOB_ID_armv7=$CI_JOB_ID >> generate_executables.env
+    artifacts:
+        name: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_armv7"
+        paths:
+            - bemos_s3uploader
+            - LICENSE
+        reports:
+            dotenv: generate_executables.env
+    dependencies:
+        - build:armv7
+
+## Release ############################################################################################################
+release_job:
+    stage: release
+    image: registry.gitlab.com/gitlab-org/release-cli:latest
+    needs:
+        - job: deploy:x86_64
+          artifacts: true
+        - job: deploy:x86_64-pc-windows-gnu
+          artifacts: true
+        - job: deploy:armv7
+          artifacts: true
+    only:
+        - tags
+    script:
+        - echo 'releasing $_CI_COMMIT_TAG'
+    release:
+        name: '$CI_COMMIT_TAG'
+        description: 'Automatically created'
+        tag_name: '$CI_COMMIT_TAG'
+        ref: '$CI_COMMIT_TAG'
+        assets:
+            links:
+                - name: "Linux x86_64"
+                  url: "https://gitlab.bestsens.local/bone/bemos-s3uploader/-/jobs/${GE_JOB_ID_x86_64}/artifacts/download"
+                - name: "Linux ARM"
+                  url: "https://gitlab.bestsens.local/bone/bemos-s3uploader/-/jobs/${GE_JOB_ID_x86_64_pc_windows_gnu}/artifacts/download"
+                - name: "Windows x86_64"
+                  url: "https://gitlab.bestsens.local/bone/bemos-s3uploader/-/jobs/${GE_JOB_ID_armv7}/artifacts/download"
