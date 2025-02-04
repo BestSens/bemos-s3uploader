@@ -21,7 +21,7 @@ struct Args {
 	bucket: String,
 }
 
-fn get_s3_bucket(args: &Args) -> Bucket {
+fn get_s3_bucket(args: &Args) -> Box<Bucket> {
 	let region = args.region.parse().unwrap();
 	let access_key =
 		env::var("AWS_ACCESS_KEY_ID").expect("env variable `AWS_ACCESS_KEY_ID` not set");
